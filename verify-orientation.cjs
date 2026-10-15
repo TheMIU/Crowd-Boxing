@@ -1,0 +1,9 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+async function scenario({fullscreenFails=false,lockSupported=true,lockFails=false}={}){
+  let fullscreenCalls=0,lockCalls=0;const nodes=Object.fromEntries(['landscapeButton','rotateHint','portraitContinue','rotate'].map(id=>[id,{hidden:id==='portraitContinue',textContent:'',disabled:false}]));
+  const window={innerWidth:390,innerHeight:844,screen:{orientation:{}}};
+  const document={getElementById:id=>nodes[id],documentElement:{async requestFullscreen(){fullscreenCalls++;if(fullscreenFails)throw Error('Denied')}},fullscreenElement:null};
+  if(lockSupported)window.screen.orientation.lock=async orientation=>{assert.equal(orientation,'landscape');lockCalls++;if(lockFails)throw Error('Unsupported');window.innerWidth=844;window.innerHeight=390};
+  vm.runInNewContext(fs.readFileSync('orientation.js','utf8'),{document,window});await nodes.landscapeButton.onclick();assert.equal(nodes.landscapeButton.disabled,false);return {nodes,fullscreenCalls,lockCalls};
+}
+(async()=>{let result=await scenario();assert.equal(result.fullscreenCalls,1);assert.equal(result.lockCalls,1);assert.equal(result.nodes.portraitContinue.hidden,true);result=await scenario({fullscreenFails:true,lockFails:true});assert.equal(result.nodes.portraitContinue.hidden,false);assert.ok(result.nodes.rotateHint.textContent.includes('Rotate your device'));result.nodes.portraitContinue.onclick();assert.equal(result.nodes.rotate.hidden,true);result=await scenario({lockSupported:false});assert.equal(result.nodes.portraitContinue.hidden,false);result=await scenario({fullscreenFails:true});assert.equal(result.lockCalls,1);console.log('PASS: fullscreen + orientation lock, rejected/unsupported fallback, continue button, recovery after failure.');})().catch(error=>{console.error(error);process.exitCode=1});
